@@ -1,0 +1,29 @@
+{
+  "name": "moviesapi-proxy",
+  "version": "1.0.0",
+  "description": "Express proxy server that forwards movie & TV requests to moviesapi.to with proper browser headers",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "express",
+    "proxy",
+    "moviesapi",
+    "vidora"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.7",
+    "cors": "^2.8.5",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
