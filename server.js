@@ -29,16 +29,6 @@ const THEME = process.env.THEME || '8b5cf6';
  * rewritten as `${WORKER_URL}/${originalUrl}` so playback is routed through
  * the Cloudflare Worker (e.g. to bypass CORS / regional blocks).
  */
-const WORKER_URL = (
-    process.env.WORKER_URL || 'https://fragrant-hall-7347.ntb7nmytsd.workers.dev'
-).replace(/\/+$/, ''); // strip trailing slash
-
-/* ---------- URL encryptor (?data=en) ----------
- * When a request includes ?data=en, every stream URL is rewritten as
- * `${WORKER_URL}/${encryptedToken}` instead of plain text.
- * Token format (must match the SECRET in your decrypt worker):
- *   v1.<b64url(iv)>.<b64url(ciphertext+authtag)>
- */
 const crypto = require('crypto');
 const TOKEN_SECRET =
     process.env.TOKEN_SECRET ||
@@ -243,7 +233,7 @@ app.get('/api/movie/:id', async (req, res) => {
         const result = await fetchUpstreamCached(cacheKey, upstreamUrl, referer);
         res.setHeader('X-Cache', result.fromCache ? 'HIT' : 'MISS');
         res.setHeader('X-Worker', useWorker ? 'ON' : 'OFF');
-        const payload = useWorker ? applyWorker(result.data, req.query.data === 'en') : result.data;
+       const payload = useWorker ? applyWorker(result.data, req.query.data === 'en') : result.data;
         return res.status(result.status).json(payload);
     } catch (error) {
         console.error(`[movie/${id}] error:`, error.message);
