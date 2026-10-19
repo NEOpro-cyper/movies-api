@@ -33,6 +33,30 @@ const WORKER_URL = (
     process.env.WORKER_URL || 'https://fragrant-hall-7347.ntb7nmytsd.workers.dev'
 ).replace(/\/+$/, ''); // strip trailing slash
 
+/* ---------- URL encryptor (?data=en) ----------
+ * When a request includes ?data=en, every stream URL is rewritten as
+ * `${WORKER_URL}/${encryptedToken}` instead of plain text.
+ * Token format (must match the SECRET in your decrypt worker):
+ *   v1.<b64url(iv)>.<b64url(ciphertext+authtag)>
+ */
+const crypto = require('crypto');
+const TOKEN_SECRET =
+    process.env.TOKEN_SECRET ||
+    'bbef4e4840ab0a33b6c129f0de8b1a6735471c82f43e9babc4adc64c5959a64a';
+
+function b64url(buf) {
+    return Buffer.from(buf).toString('base64')
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function encryptUrlToken(rawUrl) {
+    const key = crypto.createHash('sha256').update(TOKEN_SECRET, 'utf8').digest();
+    const iv = crypto.createHash('sha256').update('iv:' + rawUrl, 'utf8').digest().subarray(0, 12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const ct = Buffer.concat([cipher.update(rawUrl, 'utf8'), cipher.final()]);
+    return 'v1.' + b64url(iv) + '.' + b64url(Buffer.concat([ct, cipher.getAuthTag()]));
+}
+
 /* ---------- Cache config (successful responses only) ---------- */
 const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_MS || '3600000', 10); // default 1 hour
 const CACHE_ENABLED = (process.env.CACHE_ENABLED || 'true').toLowerCase() !== 'false';
@@ -131,26 +155,26 @@ function buildUpstreamHeaders(referer) {
  *
  * Operates on a deep clone so the cached pristine copy is never mutated.
  */
-function applyWorker(data) {
+function applyWorker(data, encrypt = false) {
     const clone = JSON.parse(JSON.stringify(data));
-    rewriteUrlsInPlace(clone);
+    rewriteUrlsInPlace(clone, encrypt);
     return clone;
 }
 
-function rewriteUrlsInPlace(node) {
+function rewriteUrlsInPlace(node, encrypt) {
     if (Array.isArray(node)) {
-        for (let i = 0; i < node.length; i++) node[i] = rewriteValue(node[i]);
+        for (let i = 0; i < node.length; i++) node[i] = rewriteValue(node[i], encrypt);
     } else if (node && typeof node === 'object') {
-        for (const k of Object.keys(node)) node[k] = rewriteValue(node[k]);
+        for (const k of Object.keys(node)) node[k] = rewriteValue(node[k], encrypt);
     }
     return node;
 }
 
-function rewriteValue(v) {
+function rewriteValue(v, encrypt) {
     if (typeof v === 'string' && /^https?:\/\//i.test(v) && !v.startsWith(WORKER_URL + '/')) {
-        return `${WORKER_URL}/${v}`;
+        return encrypt ? `${WORKER_URL}/${encryptUrlToken(v)}` : `${WORKER_URL}/${v}`;
     }
-    if (v && typeof v === 'object') return rewriteUrlsInPlace(v);
+    if (v && typeof v === 'object') return rewriteUrlsInPlace(v, encrypt);
     return v;
 }
 
@@ -213,13 +237,13 @@ app.get('/api/movie/:id', async (req, res) => {
     const upstreamUrl = `https://moviesapi.to/api/vidora/v1/movie/${id}`;
     const referer = `https://moviesapi.to/movie/${id}?theme=${THEME}`;
     const cacheKey = `movie:${id}`;
-    const useWorker = req.query.worker === '1' || req.query.worker === 'true';
+    const useWorker = req.query.worker === '1' || req.query.worker === 'true' || req.query.data === 'en';
 
     try {
         const result = await fetchUpstreamCached(cacheKey, upstreamUrl, referer);
         res.setHeader('X-Cache', result.fromCache ? 'HIT' : 'MISS');
         res.setHeader('X-Worker', useWorker ? 'ON' : 'OFF');
-        const payload = useWorker ? applyWorker(result.data) : result.data;
+        const payload = useWorker ? applyWorker(result.data, req.query.data === 'en') : result.data;
         return res.status(result.status).json(payload);
     } catch (error) {
         console.error(`[movie/${id}] error:`, error.message);
@@ -241,13 +265,13 @@ app.get('/api/tv/:id/:seasonno/:episodeno', async (req, res) => {
     const upstreamUrl = `https://moviesapi.to/api/vidora/v1/tv/${id}/${seasonno}/${episodeno}`;
     const referer = `https://moviesapi.to/tv/${id}/${seasonno}/${episodeno}?theme=${THEME}`;
     const cacheKey = `tv:${id}:${seasonno}:${episodeno}`;
-    const useWorker = req.query.worker === '1' || req.query.worker === 'true';
+    const useWorker = req.query.worker === '1' || req.query.worker === 'true' || req.query.data === 'en';
 
     try {
         const result = await fetchUpstreamCached(cacheKey, upstreamUrl, referer);
         res.setHeader('X-Cache', result.fromCache ? 'HIT' : 'MISS');
         res.setHeader('X-Worker', useWorker ? 'ON' : 'OFF');
-        const payload = useWorker ? applyWorker(result.data) : result.data;
+        const payload = useWorker ? applyWorker(result.data, req.query.data === 'en') : result.data;
         return res.status(result.status).json(payload);
     } catch (error) {
         console.error(`[tv/${id}/${seasonno}/${episodeno}] error:`, error.message);
