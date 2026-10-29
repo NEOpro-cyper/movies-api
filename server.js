@@ -30,7 +30,7 @@ const THEME = process.env.THEME || '8b5cf6';
  * the Cloudflare Worker (e.g. to bypass CORS / regional blocks).
  */
 const WORKER_URL = (
-    process.env.WORKER_URL || 'https://mute-woodmovi-0bdc-pien.ryklcd0086.workers.dev'
+    process.env.WORKER_URL || 'https://noisy-feather-adb6.ryklcd0086.workers.dev/ma'
 ).replace(/\/+$/, ''); // strip trailing slash
 
 /* ---------- URL encryptor (?data=en) ----------
